@@ -55,6 +55,16 @@ char request[REQUEST_SIZE];
 
 static const struct option long_options[]=
 {
+    /**
+     *  const char* name : 选项名
+     *  int has_arg : 有参数；没有参数；可选的参数
+     *  int* flag : 如果为null,get_long 将返回val; 如果为ptr；会是*ptr = val；
+     *  int val： 
+     */
+
+    /**
+     * longopts的最后一个元素必须是全0填充，否则会报段错误
+     */
     {"force",no_argument,&force,1},
     {"reload",no_argument,&force_reload,1},
     {"time",required_argument,NULL,'t'},
@@ -114,11 +124,42 @@ int main(int argc, char *argv[])
         usage();
         return 2;
     } 
+    /**
+     *  int argc;
+     *  const char* argv[]
+     *  const char* optstring: 短参数； 其中 单独的字符(a)只表示一个选项(-a)； 
+     *                                      后接一个冒号(b:),表示选项后带参数(-b 100)
+     *                                      后接两个冒号(c::),表示选项后可带参数(-c50), 如果带参数此时不能有空格
+     *  const struct option* longopts: 长参数
+     *  int* longindex非空， 它指向的变量将记录当前找到参数符合longopts里的第几个元素的描述，即是longopts的下标值。
+     */
 
+    /**
+     * 全局变量
+     * optarg: 表示当前选项对应的参数值
+     * optind: 表示的是下一个将被处理到的参数在argv中的下标值
+     * opterr： 如果opterr = 0，在getopt、getopt_long、getopt_long_only遇到错误将不会输出错误信息到标准输出流。
+     *          opterr在非0时，向屏幕输出错误。
+     * optopt：表示没有被未标识的选项
+     */ 
+
+    /**
+     * 函数返回值：
+     *  如果短选项找到，那么将返回短选项对应的字符。
+     *  如果长选项找到，如果flag为NULL，返回val。如果flag不为空，返回0
+     *  如果遇到一个选项没有在短字符、长字符里面。或者在长字符里面存在二义性的，返回“？”
+     *  如果解析完所有字符没有找到（一般是输入命令参数格式错误，eg： 连斜杠都没有加的选项），返回“-1”
+     *  如果选项需要参数，忘了添加参数。返回值取决于optstring，如果其第一个字符是“：”，则返回“：”，否则返回“？”。
+     */
+
+    /**
+     * 注意： 短选项中每个选项都是唯一的。而长选项如果简写，也需要保持唯一性。
+     */
     while((opt=getopt_long(argc,argv,"912Vfrt:p:c:?h",long_options,&options_index))!=EOF )
     {
         switch(opt)
         {
+            /*  对于短选项没有长选项中自动赋值的过程，所以force等都需要来赋值   */
             case  0 : break;
             case 'f': force=1;break;
             case 'r': force_reload=1;break; 
@@ -126,26 +167,26 @@ int main(int argc, char *argv[])
             case '1': http10=1;break;
             case '2': http10=2;break;
             case 'V': printf(PROGRAM_VERSION"\n");exit(0);
-            case 't': benchtime=atoi(optarg);break;	     
+            case 't': benchtime=atoi(optarg);break;	      //如果给t一个非数字字符串，也会转化 
             case 'p': 
             /* proxy server parsing server:port */
-            tmp=strrchr(optarg,':');
-            proxyhost=optarg;
-            if(tmp==NULL)
+            tmp=strrchr(optarg,':'); // optarg 是当前的参数; 找到这个参数中最后一个:
+            proxyhost=optarg; // 这里可没有完成字符串copy工作
+            if(tmp==NULL) // 没找到:
             {
                 break;
             }
-            if(tmp==optarg)
+            if(tmp==optarg) // 在一个 (:port) ,没有server
             {
                 fprintf(stderr,"Error in option --proxy %s: Missing hostname.\n",optarg);
                 return 2;
             }
-            if(tmp==optarg+strlen(optarg)-1)
+            if(tmp==optarg+strlen(optarg)-1) // 最后一个 (server:), 没有port
             {
                 fprintf(stderr,"Error in option --proxy %s Port number is missing.\n",optarg);
                 return 2;
             }
-            *tmp='\0';
+            *tmp='\0'; // 将字符串斩断, 
             proxyport=atoi(tmp+1);break;
             case ':':
             case 'h':
@@ -168,7 +209,7 @@ int main(int argc, char *argv[])
             "Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.\n"
             );
  
-    build_request(argv[optind]);
+    build_request(argv[optind]); //此时传进去的是url
  
     // print request info ,do it in function build_request
     /*printf("Benchmarking: ");
@@ -215,6 +256,9 @@ int main(int argc, char *argv[])
     return bench();
 }
 
+/**
+ *  使用url；写http报文
+ */
 void build_request(const char *url)
 {
     char tmp[10];
@@ -225,6 +269,7 @@ void build_request(const char *url)
     memset(host,0,MAXHOSTNAMELEN);
     memset(request,0,REQUEST_SIZE);
 
+    /*  应该是协议限制，实现某些特殊操作时，必须使用某一个版本的协议  */
     if(force_reload && proxyhost!=NULL && http10<1) http10=1;
     if(method==METHOD_HEAD && http10<1) http10=1;
     if(method==METHOD_OPTIONS && http10<2) http10=2;
@@ -251,14 +296,14 @@ void build_request(const char *url)
         fprintf(stderr,"URL is too long.\n");
         exit(2);
     }
-    if (0!=strncasecmp("http://",url,7)) 
+    if (0!=strncasecmp("http://",url,7)) //按照字典序比较前n个字符； 忽略大小写； #include<strings.h>
     { 
         fprintf(stderr,"\nOnly HTTP protocol is directly supported, set --proxy for others.\n");
         exit(2);
     }
     
     /* protocol/host delimiter */
-    i=strstr(url,"://")-url+3;
+    i=strstr(url,"://")-url+3; // strstr: 返回子字符串的头;  这里i指向"://" 下一个
 
     if(strchr(url+i,'/')==NULL) {
         fprintf(stderr,"\nInvalid URL syntax - hostname don't ends with '/'.\n");
@@ -268,29 +313,30 @@ void build_request(const char *url)
     if(proxyhost==NULL)
     {
         /* get port from hostname */
-        if(index(url+i,':')!=NULL && index(url+i,':')<index(url+i,'/'))
+        /* char* index(const char* string, char c); 指向第一个出现的c的地址 */
+        if(index(url+i,':')!=NULL && index(url+i,':')<index(url+i,'/')) 
         {
-            strncpy(host,url+i,strchr(url+i,':')-url-i);
+            strncpy(host,url+i,strchr(url+i,':')-url-i); //copy ':' 前面的
             //bzero(tmp,10);
             memset(tmp,0,10);
-            strncpy(tmp,index(url+i,':')+1,strchr(url+i,'/')-index(url+i,':')-1);
+            strncpy(tmp,index(url+i,':')+1,strchr(url+i,'/')-index(url+i,':')-1); //后面的
             /* printf("tmp=%s\n",tmp); */
             proxyport=atoi(tmp);
             if(proxyport==0) proxyport=80;
         } 
         else
         {
-            strncpy(host,url+i,strcspn(url+i,"/"));
+            strncpy(host,url+i,strcspn(url+i,"/")); //  strcspn检查开头连续有几个字符都不含字符串 str2 中的字符
         }
         // printf("Host=%s\n",host);
-        strcat(request+strlen(request),url+i+strcspn(url+i,"/"));
+        strcat(request+strlen(request),url+i+strcspn(url+i,"/")); //写入URL
     } 
     else
     {
         // printf("ProxyHost=%s\nProxyPort=%d\n",proxyhost,proxyport);
         strcat(request,url);
     }
-
+    //到这里开始建立HTTP报文了
     if(http10==1)
         strcat(request," HTTP/1.0");
     else if (http10==2)
@@ -329,6 +375,7 @@ static int bench(void)
     FILE *f;
 
     /* check avaibility of target server */
+    /* 先尝试连接一次 */
     i=Socket(proxyhost==NULL?host:proxyhost,proxyport);
     if(i<0) { 
         fprintf(stderr,"\nConnect to server failed. Aborting benchmark.\n");
@@ -386,7 +433,7 @@ static int bench(void)
             return 3;
         }
         /* fprintf(stderr,"Child - %d %d\n",speed,failed); */
-        fprintf(f,"%d %d %d\n",speed,failed,bytes);
+        fprintf(f,"%d %d %d\n",speed,failed,bytes); //一行三个
         fclose(f);
 
         return 0;
@@ -408,8 +455,8 @@ static int bench(void)
     
         while(1)
         {
-            pid=fscanf(f,"%d %d %d",&i,&j,&k);
-            if(pid<2)
+            pid=fscanf(f,"%d %d %d",&i,&j,&k); //遇到空格和换行时结束, 返回读入参数的个数
+            if(pid<2) // 为什么等于2也行?
             {
                 fprintf(stderr,"Some of our childrens died.\n");
                 break;
@@ -445,10 +492,11 @@ void benchcore(const char *host,const int port,const char *req)
     /* setup alarm signal handler */
     sa.sa_handler=alarm_handler;
     sa.sa_flags=0;
-    if(sigaction(SIGALRM,&sa,NULL))
+    if(sigaction(SIGALRM,&sa,NULL)) // 指定信号的处理方式，int sigaction(int signum, const struct sigaction *act,struct sigaction *oldact);
         exit(3);
     
     alarm(benchtime); // after benchtime,then exit
+                      // 信号SIGALARM将会在benchtime(s)后，发送到目前进程
 
     rlen=strlen(req);
     nexttry:while(1)
@@ -467,8 +515,18 @@ void benchcore(const char *host,const int port,const char *req)
         if(s<0) { failed++;continue;} 
         if(rlen!=write(s,req,rlen)) {failed++;close(s);continue;}
         if(http10==0) 
+
+        /*
+         * int shutdown(int sockfd,int howto); 
+         * 成功返回0； 出错返回-1
+         * SHUT_RD：值为0，关闭连接的读这一半。
+         * SHUT_WR：值为1，关闭连接的写这一半。
+         * SHUT_RDWR：值为2，连接的读和写都关闭。
+         */
+
         if(shutdown(s,1)) { failed++;close(s);continue;}
-        if(force==0) 
+        
+        if(force==0) //等待回复， force = 1 表示不需要回复
         {
             /* read all available data from socket */
             while(1)
